@@ -220,6 +220,20 @@ Deno.test("command builder should build", async () => {
   }
 });
 
+Deno.test("command builder types", () => {
+  const builder = new CommandBuilder().registerCommand(
+    "true",
+    () => Promise.resolve({ kind: "continue", code: 0 }),
+  );
+
+  builder.command("true");
+
+  const builder2 = new CommandBuilder().registerCommands({
+    true: () => Promise.resolve({ kind: "continue", code: 0 }),
+    false: () => Promise.resolve({ kind: "continue", code: 1 }),
+  });
+});
+
 Deno.test("should handle boolean list 'or'", async () => {
   {
     const output = await $`deno eval 'Deno.exit(1)' || deno eval 'console.log(5)'`.text();

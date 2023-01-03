@@ -40,6 +40,17 @@ interface CommandBuilderState {
   timeout: number | undefined;
 }
 
+type LiteralUnion<LiteralType, BaseType extends null | undefined | string | number | boolean | symbol | bigint> =
+  | LiteralType
+  | (BaseType & Record<never, never>);
+
+interface RegisterCommandBuilder<Commands extends string> {
+  registerCommand: <Command extends string>(
+    command: Command extends Commands ? never : Command,
+    handlerFn: CommandHandler,
+  ) => RegisterCommandBuilder<Commands | Command>;
+}
+
 const textDecoder = new TextDecoder();
 
 const builtInCommands = {
@@ -55,6 +66,7 @@ const builtInCommands = {
   mv: mvCommand,
   pwd: pwdCommand,
 };
+type BuildInCommandName = keyof typeof builtInCommands;
 
 /**
  * Underlying builder API for executing commands.
@@ -76,7 +88,8 @@ const builtInCommands = {
  * console.log(await builder.env("MY_VAR", "6").text());
  * ```
  */
-export class CommandBuilder implements PromiseLike<CommandResult> {
+export class CommandBuilder<Commands extends string = BuildInCommandName>
+  implements PromiseLike<CommandResult>, RegisterCommandBuilder<Commands> {
   #state: Readonly<CommandBuilderState> = {
     command: undefined,
     stdin: "inherit",
@@ -111,8 +124,8 @@ export class CommandBuilder implements PromiseLike<CommandResult> {
     };
   }
 
-  #newWithState(action: (state: CommandBuilderState) => void): CommandBuilder {
-    const builder = new CommandBuilder();
+  #newWithState<Commands extends string>(action: (state: CommandBuilderState) => void): CommandBuilder<Commands> {
+    const builder = new CommandBuilder<Commands>();
     const state = this.#getClonedState();
     action(state);
     builder.#state = state;
@@ -141,9 +154,9 @@ export class CommandBuilder implements PromiseLike<CommandResult> {
   /**
    * Register a command.
    */
-  registerCommand(command: string, handleFn: CommandHandler) {
+  registerCommand<Command extends string>(command: Command, handleFn: CommandHandler) {
     validateCommandName(command);
-    return this.#newWithState((state) => {
+    return this.#newWithState<Commands | Command>((state) => {
       state.commands[command] = handleFn;
     });
   }
@@ -151,10 +164,10 @@ export class CommandBuilder implements PromiseLike<CommandResult> {
   /**
    * Register multilple commands.
    */
-  registerCommands(commands: Record<string, CommandHandler>) {
-    let command: CommandBuilder = this;
+  registerCommands<Command extends string>(commands: Record<Command, CommandHandler>) {
+    let command: CommandBuilder<Commands | Command> = this;
     for (const [key, value] of Object.entries(commands)) {
-      command = command.registerCommand(key, value);
+      command = command.registerCommand(key, value as CommandHandler);
     }
     return command;
   }
@@ -169,7 +182,7 @@ export class CommandBuilder implements PromiseLike<CommandResult> {
   }
 
   /** Sets the raw command to execute. */
-  command(command: string | string[]) {
+  command(command: LiteralUnion<Commands, string> | string[]) {
     return this.#newWithState((state) => {
       if (typeof command === "string") {
         state.command = command;
